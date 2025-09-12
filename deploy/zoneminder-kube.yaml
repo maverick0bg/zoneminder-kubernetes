@@ -1,0 +1,97 @@
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zoneminder-svc 
+  namespace: zoneminder
+spec:
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: zoneminder 
+  type: ClusterIP
+
+
+#This is Deployment Configuration Kube definition
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  labels:
+    app: zoneminder
+  name: zoneminder
+  namespace: zoneminder
+spec:
+  replicas: 1
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app: zoneminder
+  serviceName: zoneminder-svc
+  template:
+    metadata:
+      labels:
+        app: zoneminder
+      namespace: zoneminder
+    spec:
+      # Node affinity ensures pods are scheduled on specific nodes
+      # requiredDuringSchedulingIgnoredDuringExecution means pods will only be scheduled on matching nodes
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: In
+                values:
+                - maverick-desktop  # Replace with your actual node hostname
+      containers:
+      - env:
+        - name: TZ
+          value: Europe/Sofia
+        - name: PUID
+          value: '99'
+        - name: PGID
+          value: '100'
+        - name: MULTI_PORT_START
+          value: '0'
+        - name: MULTI_PORT_END
+          value: '0'
+        image: dlandon/zoneminder.machine.learning
+        imagePullPolicy: IfNotPresent
+        name: zoneminder
+        volumeMounts:
+        - mountPath: /config
+          name: zoneminder0
+        - mountPath: /var/cache/zoneminder
+          name: zoneminder1
+      terminationGracePeriodSeconds: 0
+      volumes:
+      - name: zoneminder0
+        persistentVolumeClaim:
+          claimName: zoneminder-cmname0
+      - name: zoneminder1
+        persistentVolumeClaim:
+          claimName: zoneminder-cmname1
+  volumeClaimTemplates:
+    - metadata:
+        name: zoneminder0
+      spec:
+        accessModes:
+          - "ReadWriteOnce"
+        resources:
+          requests:
+            storage: 256Mi
+    - metadata:
+        name: zoneminder1
+      spec:
+        accessModes:
+          - "ReadWriteOnce"
+        resources:
+          requests:
+            storage: 100Gi
+
