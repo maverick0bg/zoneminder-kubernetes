@@ -15,7 +15,84 @@ spec:
     app: zoneminder 
   type: ClusterIP
 
+# Database
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: db-svc
+  namespace: zoneminder
+spec:
+  ports:
+    - name: http
+      port: 3306
+      protocol: TCP
+      targetPort: 3306
+  selector:
+    app: db
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: db
+  labels:
+    app: db
+  namespace: zoneminder
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: db
+  serviceName: db-svc
 
+  template:
+    metadata:
+      labels:
+        app: db
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - maverick-desktop  # Replace with your actual node hostname
+      containers:
+        - name: db
+          image: mariadb
+
+          # No ports specified
+          env:
+            - name: MYSQL_DATABASE
+              value: "zm"
+            - name: MYSQL_ROOT_PASSWORD
+              value: "str0ngr00tp@ssword"
+            - name: MYSQL_USER
+              value: "mysqluser"
+            - name: MYSQL_PASSWORD
+              value: "mysqlpassword"
+            - name: TZ
+              value: Europe/Sofia
+          volumeMounts:
+            - name: volume-db
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: volume-db
+          persistentVolumeClaim:
+            claimName: zoneminder-data
+
+  volumeClaimTemplates:
+    - metadata:
+        name: volume-db
+      spec:
+        accessModes:
+          - "ReadWriteOnce"
+        resources:
+          requests:
+            storage: 100Gi
 #This is Deployment Configuration Kube definition
 ---
 apiVersion: apps/v1
@@ -50,7 +127,8 @@ spec:
                 values:
                 - maverick-desktop  # Replace with your actual node hostname
       containers:
-      - env:
+      - name: zoneminder
+        env:
         - name: TZ
           value: Europe/Sofia
         - name: PUID
@@ -61,9 +139,14 @@ spec:
           value: '0'
         - name: MULTI_PORT_END
           value: '0'
-        image: dlandon/zoneminder.machine.learning
+        - name: MYSQL_HOST
+          value: db-svc
+        - name: MYSQL_USER
+          value: mysqluser
+        - name: MYSQL_PASSWORD
+          value: "mysqlpassword"
+        image: ghcr.io/zoneminder-containers/zoneminder-base:latest
         imagePullPolicy: IfNotPresent
-        name: zoneminder
         volumeMounts:
         - mountPath: /config
           name: zoneminder0
